@@ -1,0 +1,118 @@
+import { GameProgress, DEFAULT_ACHIEVEMENTS, Achievement } from '@/types/achievements';
+import { DailyChallenge, generateDailyChallenge } from '@/types/dailyChallenge';
+
+const STORAGE_KEYS = {
+  PROGRESS: 'times-tables-progress',
+  DAILY_CHALLENGE: 'times-tables-daily-challenge',
+  PAUSED_GAME: 'times-tables-paused-game'
+};
+
+export const getProgress = (): GameProgress => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.PROGRESS);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading progress:', error);
+  }
+  
+  return {
+    totalGamesPlayed: 0,
+    totalQuestionsAnswered: 0,
+    totalCorrectAnswers: 0,
+    bestStreak: 0,
+    currentStreak: 0,
+    fastestAnswer: Infinity,
+    achievements: DEFAULT_ACHIEVEMENTS,
+    gameHistory: []
+  };
+};
+
+export const saveProgress = (progress: GameProgress): void => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.PROGRESS, JSON.stringify(progress));
+  } catch (error) {
+    console.error('Error saving progress:', error);
+  }
+};
+
+export const resetProgress = (): void => {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.PROGRESS);
+  } catch (error) {
+    console.error('Error resetting progress:', error);
+  }
+};
+
+export const unlockAchievement = (achievementId: string): Achievement | null => {
+  const progress = getProgress();
+  const achievement = progress.achievements.find(a => a.id === achievementId);
+  
+  if (achievement && !achievement.unlocked) {
+    achievement.unlocked = true;
+    achievement.unlockedAt = new Date().toISOString();
+    saveProgress(progress);
+    return achievement;
+  }
+  
+  return null;
+};
+
+export const getDailyChallenge = (): DailyChallenge => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.DAILY_CHALLENGE);
+    if (stored) {
+      const challenge: DailyChallenge = JSON.parse(stored);
+      const today = new Date().toISOString().split('T')[0];
+      
+      // If stored challenge is for today, return it
+      if (challenge.date === today) {
+        return challenge;
+      }
+    }
+  } catch (error) {
+    console.error('Error loading daily challenge:', error);
+  }
+  
+  // Generate new challenge for today
+  const newChallenge = generateDailyChallenge(new Date());
+  saveDailyChallenge(newChallenge);
+  return newChallenge;
+};
+
+export const saveDailyChallenge = (challenge: DailyChallenge): void => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.DAILY_CHALLENGE, JSON.stringify(challenge));
+  } catch (error) {
+    console.error('Error saving daily challenge:', error);
+  }
+};
+
+export const savePausedGame = (gameState: any): void => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.PAUSED_GAME, JSON.stringify(gameState));
+  } catch (error) {
+    console.error('Error saving paused game:', error);
+  }
+};
+
+export const getPausedGame = (): any => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.PAUSED_GAME);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading paused game:', error);
+  }
+  return null;
+};
+
+export const clearPausedGame = (): void => {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.PAUSED_GAME);
+  } catch (error) {
+    console.error('Error clearing paused game:', error);
+  }
+};

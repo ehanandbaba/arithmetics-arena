@@ -7,6 +7,8 @@ import Home from "./pages/Home";
 import Settings from "./pages/Settings";
 import Game from "./pages/Game";
 import Results from "./pages/Results";
+import Progress from "./pages/Progress";
+import DailyChallenge from "./pages/DailyChallenge";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
