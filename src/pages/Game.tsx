@@ -21,7 +21,11 @@ const Game = () => {
     correct: 0,
     incorrect: 0,
     totalQuestions: 0,
-    questionsAnswered: []
+    questionsAnswered: [],
+    currentStreak: 0,
+    bestStreak: 0,
+    averageTime: 0,
+    fastestAnswer: Infinity
   });
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
 
