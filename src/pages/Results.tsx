@@ -1,13 +1,44 @@
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GameStats } from '@/types/game';
-import { Trophy, Target, TrendingUp, Home, Play } from 'lucide-react';
+import { Trophy, Target, TrendingUp, Home, Play, Sparkles, Zap } from 'lucide-react';
+import { saveGameResult, checkPersonalBests, getProgress } from '@/utils/storage';
+import { saveDailyChallenge, getDailyChallenge } from '@/utils/storage';
 
 const Results = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const stats = location.state?.stats as GameStats;
+  const settings = location.state?.settings;
+  const isDailyChallenge = location.state?.isDailyChallenge;
+
+  useEffect(() => {
+    if (!stats) {
+      navigate('/');
+      return;
+    }
+
+    // Save game result
+    saveGameResult(stats, settings, stats.unlockedAchievements);
+
+    // Update daily challenge if applicable
+    if (isDailyChallenge) {
+      const challenge = getDailyChallenge();
+      const accuracy = stats.totalQuestions > 0 
+        ? Math.round((stats.correct / stats.totalQuestions) * 100) 
+        : 0;
+      
+      challenge.completed = true;
+      challenge.score = {
+        correct: stats.correct,
+        total: stats.totalQuestions,
+        accuracy
+      };
+      saveDailyChallenge(challenge);
+    }
+  }, [stats, settings, isDailyChallenge]);
 
   if (!stats) {
     navigate('/');
@@ -17,6 +48,12 @@ const Results = () => {
   const accuracy = stats.totalQuestions > 0 
     ? Math.round((stats.correct / stats.totalQuestions) * 100) 
     : 0;
+
+  const personalBests = checkPersonalBests(stats);
+  const progress = getProgress();
+  const newlyUnlockedAchievements = stats.unlockedAchievements.map(id => 
+    progress.achievements.find(a => a.id === id)
+  ).filter(Boolean);
 
   const getMessage = () => {
     if (accuracy >= 90) return { text: 'Outstanding! 🌟', color: 'text-success' };
@@ -30,6 +67,21 @@ const Results = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/10 p-4 flex items-center justify-center">
       <div className="max-w-2xl w-full space-y-6 animate-fade-in">
+        {/* Personal Bests Banner */}
+        {personalBests.length > 0 && (
+          <Card className="p-6 text-center bg-gradient-to-r from-accent/20 via-primary/20 to-success/20 border-accent animate-scale-in">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Sparkles className="w-8 h-8 text-accent animate-pulse" />
+              <h2 className="text-3xl font-bold text-accent">NEW PERSONAL BEST!</h2>
+              <Sparkles className="w-8 h-8 text-accent animate-pulse" />
+            </div>
+            <p className="text-lg font-semibold">
+              {personalBests.join(' & ')} 🎯
+            </p>
+          </Card>
+        )}
+
+        {/* Main Results Card */}
         <Card>
           <CardHeader className="text-center pb-4">
             <div className="flex justify-center mb-4">
@@ -37,7 +89,9 @@ const Results = () => {
                 <Trophy className="w-12 h-12 text-primary" />
               </div>
             </div>
-            <CardTitle className="text-4xl mb-2">Game Complete!</CardTitle>
+            <CardTitle className="text-4xl mb-2">
+              {isDailyChallenge ? 'Daily Challenge Complete!' : 'Game Complete!'}
+            </CardTitle>
             <p className={`text-3xl font-bold ${message.color}`}>{message.text}</p>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -75,11 +129,38 @@ const Results = () => {
               </p>
             </div>
 
+            {/* Newly Unlocked Achievements */}
+            {newlyUnlockedAchievements.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 justify-center">
+                  <Zap className="w-5 h-5 text-accent" />
+                  <h3 className="text-lg font-bold text-accent">New Achievements!</h3>
+                  <Zap className="w-5 h-5 text-accent" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {newlyUnlockedAchievements.map((achievement: any) => (
+                    <Card 
+                      key={achievement.id} 
+                      className="p-4 bg-gradient-to-br from-accent/10 to-primary/10 border-accent/30 animate-scale-in"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="text-4xl">{achievement.icon}</div>
+                        <div className="flex-1">
+                          <p className="font-bold text-sm">{achievement.title}</p>
+                          <p className="text-xs text-muted-foreground">{achievement.description}</p>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <Button
                 size="lg"
-                onClick={() => navigate('/settings')}
+                onClick={() => navigate('/')}
                 className="flex-1 text-lg h-14"
               >
                 <Play className="w-5 h-5 mr-2" />

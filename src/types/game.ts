@@ -28,6 +28,8 @@ export interface GameStats {
   bestStreak: number;
   averageTime: number;
   fastestAnswer: number;
+  answerTimes: number[]; // track time for each answer
+  unlockedAchievements: string[]; // achievement IDs unlocked during this session
 }
 
 export const DIFFICULTY_PRESETS: Record<DifficultyPreset, Partial<GameSettings>> = {

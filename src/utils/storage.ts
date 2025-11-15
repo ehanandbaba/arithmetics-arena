@@ -116,3 +116,64 @@ export const clearPausedGame = (): void => {
     console.error('Error clearing paused game:', error);
   }
 };
+
+export const saveGameResult = (stats: any, settings: any, unlockedAchievements: string[]): void => {
+  const progress = getProgress();
+  
+  const accuracy = stats.totalQuestions > 0 
+    ? Math.round((stats.correct / stats.totalQuestions) * 100) 
+    : 0;
+  
+  const avgTime = stats.answerTimes.length > 0
+    ? stats.answerTimes.reduce((a: number, b: number) => a + b, 0) / stats.answerTimes.length
+    : 0;
+  
+  // Update overall progress
+  progress.totalGamesPlayed += 1;
+  progress.totalQuestionsAnswered += stats.totalQuestions;
+  progress.totalCorrectAnswers += stats.correct;
+  progress.bestStreak = Math.max(progress.bestStreak, stats.bestStreak);
+  progress.fastestAnswer = Math.min(progress.fastestAnswer, stats.fastestAnswer);
+  
+  // Add to game history
+  progress.gameHistory.unshift({
+    id: Date.now().toString(),
+    date: new Date().toISOString(),
+    mode: settings.mode,
+    correct: stats.correct,
+    incorrect: stats.incorrect,
+    accuracy,
+    timePerQuestion: avgTime
+  });
+  
+  // Keep only last 50 games
+  if (progress.gameHistory.length > 50) {
+    progress.gameHistory = progress.gameHistory.slice(0, 50);
+  }
+  
+  // Unlock achievements
+  unlockedAchievements.forEach(id => {
+    const achievement = progress.achievements.find(a => a.id === id);
+    if (achievement && !achievement.unlocked) {
+      achievement.unlocked = true;
+      achievement.unlockedAt = new Date().toISOString();
+    }
+  });
+  
+  saveProgress(progress);
+};
+
+export const checkPersonalBests = (stats: any): string[] => {
+  const progress = getProgress();
+  const bests: string[] = [];
+  
+  if (stats.bestStreak > progress.bestStreak) {
+    bests.push('Best Streak');
+  }
+  
+  if (stats.fastestAnswer < progress.fastestAnswer && stats.fastestAnswer < Infinity) {
+    bests.push('Fastest Answer');
+  }
+  
+  return bests;
+};
