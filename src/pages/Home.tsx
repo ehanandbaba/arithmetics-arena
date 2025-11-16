@@ -56,14 +56,15 @@ const Home = () => {
       return;
     }
 
-    const settings: GameSettings = customSettings || {
+    const settings: GameSettings = {
       mode: gameMode,
       timeLimit,
       timerMode,
       selectedTables,
       multiplierRange: { min: multiplierMin, max: multiplierMax },
       difficulty,
-      totalQuestions
+      totalQuestions,
+      ...customSettings
     };
 
     navigate('/game', { state: { settings } });
