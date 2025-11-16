@@ -79,13 +79,26 @@ const Game = () => {
   }, []);
 
   useEffect(() => {
-    if (isPaused || feedback) return;
+    if (isPaused || feedback || !currentQuestion) return;
 
     const timer = setInterval(() => {
       if (effectiveSettings.timerMode === 'per-question') {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            handleTimeout();
+            // Handle timeout immediately
+            if (!currentQuestion) return 0;
+            
+            setFeedback('incorrect');
+            setStats(prevStats => ({
+              ...prevStats,
+              incorrect: prevStats.incorrect + 1,
+              totalQuestions: prevStats.totalQuestions + 1,
+              questionsAnswered: [...prevStats.questionsAnswered, currentQuestion],
+              currentStreak: 0,
+              answerTimes: [...prevStats.answerTimes, effectiveSettings.timeLimit]
+            }));
+            setQuestionsCompleted(prev => prev + 1);
+            
             return 0;
           }
           return prev - 1;
@@ -102,13 +115,31 @@ const Game = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPaused, feedback, effectiveSettings.timerMode]);
+  }, [isPaused, feedback, currentQuestion, effectiveSettings.timerMode, effectiveSettings.timeLimit]);
 
   useEffect(() => {
     if (!isPaused) {
       inputRef.current?.focus();
     }
   }, [currentQuestion, isPaused]);
+
+  // Auto-advance after showing feedback
+  useEffect(() => {
+    if (feedback) {
+      const timer = setTimeout(() => {
+        // Check current questionsCompleted value to decide next action
+        const currentCompleted = questionsCompleted;
+        
+        if (effectiveSettings.timerMode === 'total' || currentCompleted < totalQuestions) {
+          generateNewQuestion();
+        } else {
+          endGame();
+        }
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [feedback, questionsCompleted, totalQuestions, effectiveSettings.timerMode]);
 
   const generateNewQuestion = () => {
     const question = generateQuestion(effectiveSettings);
@@ -146,30 +177,6 @@ const Game = () => {
     }
 
     return newAchievements;
-  };
-
-  const handleTimeout = () => {
-    if (!currentQuestion) return;
-    
-    setFeedback('incorrect');
-    const updatedStats = {
-      ...stats,
-      incorrect: stats.incorrect + 1,
-      totalQuestions: stats.totalQuestions + 1,
-      questionsAnswered: [...stats.questionsAnswered, currentQuestion],
-      currentStreak: 0,
-      answerTimes: [...stats.answerTimes, effectiveSettings.timeLimit]
-    };
-    setStats(updatedStats);
-    setQuestionsCompleted(prev => prev + 1);
-
-    setTimeout(() => {
-      if (effectiveSettings.timerMode === 'total' || questionsCompleted + 1 < totalQuestions) {
-        generateNewQuestion();
-      } else {
-        endGame();
-      }
-    }, 1500);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -213,14 +220,6 @@ const Game = () => {
         description: `The answer was ${currentQuestion.answer}`
       });
     }
-
-    setTimeout(() => {
-      if (effectiveSettings.timerMode === 'total' || questionsCompleted + 1 < totalQuestions) {
-        generateNewQuestion();
-      } else {
-        endGame();
-      }
-    }, 1500);
   };
 
   const handlePause = () => {
