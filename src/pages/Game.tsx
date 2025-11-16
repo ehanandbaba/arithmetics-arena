@@ -163,10 +163,6 @@ const Game = () => {
     setStats(updatedStats);
     setQuestionsCompleted(prev => prev + 1);
 
-    toast.error('Time\'s up! ⏰', {
-      description: `The answer was ${currentQuestion.answer}`
-    });
-
     setTimeout(() => {
       if (effectiveSettings.timerMode === 'total' || questionsCompleted + 1 < totalQuestions) {
         generateNewQuestion();
@@ -348,6 +344,29 @@ const Game = () => {
               <div className="text-7xl font-bold text-primary">
                 {currentQuestion.num1} {operatorSymbol} {currentQuestion.num2}
               </div>
+              
+              {feedback && (
+                <div className={`text-3xl font-bold animate-scale-in ${
+                  feedback === 'correct' ? 'text-success' : 'text-destructive'
+                }`}>
+                  {feedback === 'correct' ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Check className="w-8 h-8" />
+                      <span>Correct!</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center gap-2">
+                        <X className="w-8 h-8" />
+                        <span>{userAnswer ? 'Incorrect!' : 'Time\'s Up! ⏰'}</span>
+                      </div>
+                      <div className="text-xl text-muted-foreground">
+                        The answer was {currentQuestion.answer}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Input
