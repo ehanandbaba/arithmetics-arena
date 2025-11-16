@@ -17,6 +17,18 @@ const Game = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const questionStartTimeRef = useRef<number>(Date.now());
 
+  // Redirect if no settings
+  useEffect(() => {
+    if (!settings) {
+      navigate('/');
+    }
+  }, [settings, navigate]);
+
+  // Early return if no settings to prevent crashes
+  if (!settings) {
+    return null;
+  }
+
   const pausedGame = getPausedGame();
   
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
@@ -50,12 +62,8 @@ const Game = () => {
     ? effectiveSettings.totalQuestions || 20 
     : Infinity;
 
+
   useEffect(() => {
-    if (!effectiveSettings) {
-      navigate('/');
-      return;
-    }
-    
     if (pausedGame) {
       setCurrentQuestion(pausedGame.currentQuestion);
       setTimeLeft(pausedGame.timeLeft);
