@@ -60,7 +60,7 @@ const Game = () => {
 
   const totalQuestions = effectiveSettings.timerMode === 'total' 
     ? effectiveSettings.totalQuestions || 20 
-    : Infinity;
+    : (effectiveSettings.totalQuestions || Infinity);
 
 
   useEffect(() => {
