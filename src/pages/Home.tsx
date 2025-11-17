@@ -116,27 +116,42 @@ const Home = () => {
           </Card>
         </div>
 
-        {!dailyChallenge.completed && (
-          <Card className="bg-gradient-to-r from-accent/10 via-primary/10 to-secondary/10 border-accent/50">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-6 h-6 text-accent" />
-                  <CardTitle className="text-2xl">Daily Challenge</CardTitle>
-                </div>
+        <Card className="bg-gradient-to-r from-accent/10 via-primary/10 to-secondary/10 border-accent/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-6 h-6 text-accent" />
+                <CardTitle className="text-2xl">Daily Challenge</CardTitle>
+              </div>
+              {dailyChallenge.completed ? (
+                <Badge variant="outline" className="bg-success/20 text-success border-success">
+                  ✓ Completed {dailyChallenge.score ? `${dailyChallenge.score.accuracy}%` : ''}
+                </Badge>
+              ) : (
                 <Badge variant="outline" className="bg-accent/20 text-accent border-accent">
                   50 Questions · 3s each
                 </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {dailyChallenge.completed ? (
+              <div className="text-center space-y-2">
+                <p className="text-muted-foreground">Great job! Come back tomorrow for a new challenge.</p>
+                {dailyChallenge.score && (
+                  <p className="text-lg font-semibold text-success">
+                    Score: {dailyChallenge.score.correct}/{dailyChallenge.score.total}
+                  </p>
+                )}
               </div>
-            </CardHeader>
-            <CardContent>
+            ) : (
               <Button onClick={startDailyChallenge} size="lg" className="w-full">
                 <Play className="w-5 h-5 mr-2" />
                 Start Daily Challenge
               </Button>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
