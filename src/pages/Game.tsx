@@ -8,6 +8,7 @@ import { generateQuestion } from '@/utils/questionGenerator';
 import { Clock, X, Check, Pause, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { savePausedGame, clearPausedGame, unlockAchievement, getPausedGame } from '@/utils/storage';
+import { checkGameplayAchievements } from '@/utils/achievementChecker';
 
 const Game = () => {
   const location = useLocation();
@@ -153,30 +154,7 @@ const Game = () => {
   };
 
   const checkAchievements = (updatedStats: GameStats) => {
-    const newAchievements: string[] = [];
-
-    if (updatedStats.totalQuestions === 1 && !stats.unlockedAchievements.includes('first_game')) {
-      newAchievements.push('first_game');
-      toast.success('Achievement Unlocked! 🎮', { description: 'Getting Started' });
-    }
-
-    if (updatedStats.currentStreak === 5 && !stats.unlockedAchievements.includes('streak_5')) {
-      newAchievements.push('streak_5');
-      toast.success('Achievement Unlocked! 🔥', { description: '5 in a Row!' });
-    }
-
-    if (updatedStats.currentStreak === 10 && !stats.unlockedAchievements.includes('streak_10')) {
-      newAchievements.push('streak_10');
-      toast.success('Achievement Unlocked! ⚡', { description: '10 in a Row!' });
-    }
-
-    const answerTime = (Date.now() - questionStartTimeRef.current) / 1000;
-    if (answerTime < 3 && !stats.unlockedAchievements.includes('speed_master')) {
-      newAchievements.push('speed_master');
-      toast.success('Achievement Unlocked! 🚀', { description: 'Speed Master!' });
-    }
-
-    return newAchievements;
+    return checkGameplayAchievements(updatedStats, stats.unlockedAchievements);
   };
 
   const handleSubmit = (e: React.FormEvent) => {

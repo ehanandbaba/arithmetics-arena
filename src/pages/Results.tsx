@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GameStats } from '@/types/game';
 import { Trophy, Target, TrendingUp, Home, Play, Sparkles, Zap } from 'lucide-react';
-import { saveGameResult, checkPersonalBests, getProgress } from '@/utils/storage';
-import { saveDailyChallenge, getDailyChallenge } from '@/utils/storage';
+import { saveGameResult, checkPersonalBests, getProgress, saveDailyChallenge, getDailyChallenge } from '@/utils/storage';
+import { checkProgressAchievements } from '@/utils/achievementChecker';
 
 const Results = () => {
   const location = useLocation();
@@ -20,8 +20,12 @@ const Results = () => {
       return;
     }
 
-    // Save game result
-    saveGameResult(stats, settings, stats.unlockedAchievements);
+    // Check progress-based achievements
+    const progressAchievements = checkProgressAchievements(stats, settings, isDailyChallenge);
+    const allUnlocked = [...stats.unlockedAchievements, ...progressAchievements];
+    
+    // Save game result with all achievements
+    saveGameResult(stats, settings, allUnlocked);
 
     // Update daily challenge if applicable
     if (isDailyChallenge) {
