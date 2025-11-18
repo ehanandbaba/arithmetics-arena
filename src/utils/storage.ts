@@ -11,7 +11,19 @@ export const getProgress = (): GameProgress => {
   try {
     const stored = localStorage.getItem(STORAGE_KEYS.PROGRESS);
     if (stored) {
-      return JSON.parse(stored);
+      const progress = JSON.parse(stored);
+      
+      // Merge stored achievements with DEFAULT_ACHIEVEMENTS to ensure all 50 are present
+      // Keep unlock status for existing achievements, add new ones as locked
+      const mergedAchievements = DEFAULT_ACHIEVEMENTS.map(defaultAch => {
+        const existingAch = progress.achievements?.find((a: Achievement) => a.id === defaultAch.id);
+        return existingAch || defaultAch;
+      });
+      
+      return {
+        ...progress,
+        achievements: mergedAchievements
+      };
     }
   } catch (error) {
     console.error('Error loading progress:', error);
