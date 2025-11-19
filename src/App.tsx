@@ -16,7 +16,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter basename="/arithmetics-arena">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/game" element={<Game />} />
