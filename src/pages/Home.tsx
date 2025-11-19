@@ -85,7 +85,7 @@ const Home = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/10 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
         <div className="text-center space-y-4">
-          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
+          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent leading-tight pb-2">
             Times Tables Challenge
           </h1>
           <p className="text-xl text-muted-foreground">Master multiplication and division!</p>
