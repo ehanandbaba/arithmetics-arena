@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { GameSettings, DIFFICULTY_PRESETS, DifficultyPreset, GameMode } from '@/types/game';
 import { getProgress, getDailyChallenge } from '@/utils/storage';
-import { Brain, Trophy, Zap, Calendar, TrendingUp, Play, Clock } from 'lucide-react';
+import { Brain, Trophy, Zap, Calendar, TrendingUp, Play, Clock, Swords } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Home = () => {
@@ -150,6 +150,29 @@ const Home = () => {
                 Start Daily Challenge
               </Button>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-r from-destructive/10 via-primary/10 to-accent/10 border-destructive/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Swords className="w-6 h-6 text-destructive" />
+                <CardTitle className="text-2xl">Math Battle</CardTitle>
+              </div>
+              <Badge variant="outline" className="bg-destructive/20 text-destructive border-destructive">
+                NEW
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Race against the CPU! Answer math questions faster to deal damage and win the battle.
+            </p>
+            <Button onClick={() => navigate('/battle')} size="lg" className="w-full" variant="destructive">
+              <Swords className="w-5 h-5 mr-2" />
+              Start Battle
+            </Button>
           </CardContent>
         </Card>
 
