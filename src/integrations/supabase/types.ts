@@ -14,7 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      battle_rooms: {
+        Row: {
+          created_at: string
+          current_question: Json | null
+          difficulty: string
+          id: string
+          player1_health: number
+          player1_id: string | null
+          player1_name: string
+          player2_health: number
+          player2_id: string | null
+          player2_name: string | null
+          status: Database["public"]["Enums"]["battle_status"]
+          updated_at: string
+          winner_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          current_question?: Json | null
+          difficulty?: string
+          id?: string
+          player1_health?: number
+          player1_id?: string | null
+          player1_name?: string
+          player2_health?: number
+          player2_id?: string | null
+          player2_name?: string | null
+          status?: Database["public"]["Enums"]["battle_status"]
+          updated_at?: string
+          winner_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          current_question?: Json | null
+          difficulty?: string
+          id?: string
+          player1_health?: number
+          player1_id?: string | null
+          player1_name?: string
+          player2_health?: number
+          player2_id?: string | null
+          player2_name?: string | null
+          status?: Database["public"]["Enums"]["battle_status"]
+          updated_at?: string
+          winner_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +70,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      battle_status: "waiting" | "in_progress" | "finished"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +197,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      battle_status: ["waiting", "in_progress", "finished"],
+    },
   },
 } as const
