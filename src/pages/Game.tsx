@@ -1,393 +1,333 @@
-import { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { GameSettings, Question, GameStats } from '@/types/game';
-import { generateQuestion } from '@/utils/questionGenerator';
-import { Clock, X, Check, Pause, Play } from 'lucide-react';
-import { toast } from 'sonner';
-import { savePausedGame, clearPausedGame, unlockAchievement, getPausedGame } from '@/utils/storage';
-import { checkGameplayAchievements } from '@/utils/achievementChecker';
+import { ArrowLeft, Gauge, Timer, Trophy } from 'lucide-react';
+
+type Driver = {
+  name: string;
+  color: string;
+  maxSpeed: number;
+  acceleration: number;
+  handling: number;
+};
+
+type Car = {
+  x: number;
+  speed: number;
+  lane: number;
+  distance: number;
+  isBoosting: boolean;
+};
+
+type Obstacle = {
+  id: number;
+  lane: number;
+  y: number;
+  kind: 'cone' | 'oil';
+};
+
+const LANES = 3;
+const ROAD_HEIGHT = 560;
+const ROAD_WIDTH = 360;
+const CAR_HEIGHT = 80;
+const FINISH_DISTANCE = 2500;
+const FPS = 1000 / 60;
+
+const drivers: Driver[] = [
+  { name: 'Nova Blaze', color: 'from-red-500 to-orange-400', maxSpeed: 230, acceleration: 5.2, handling: 0.18 },
+  { name: 'Kai Drift', color: 'from-cyan-500 to-sky-400', maxSpeed: 210, acceleration: 6.1, handling: 0.24 },
+  { name: 'Raven Volt', color: 'from-violet-500 to-fuchsia-400', maxSpeed: 245, acceleration: 4.5, handling: 0.15 },
+];
+
+const laneToX = (lane: number) => 20 + lane * ((ROAD_WIDTH - 40) / LANES);
 
 const Game = () => {
-  const location = useLocation();
   const navigate = useNavigate();
-  const settings = location.state?.settings as GameSettings;
-  const isDailyChallenge = location.state?.isDailyChallenge;
-  const inputRef = useRef<HTMLInputElement>(null);
-  const questionStartTimeRef = useRef<number>(Date.now());
+  const [selectedDriver, setSelectedDriver] = useState<Driver>(drivers[0]);
+  const [started, setStarted] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [boost, setBoost] = useState(100);
+  const [score, setScore] = useState(0);
+  const [message, setMessage] = useState('Use ← and → to change lanes. Hold Space for Nitro!');
+  const [car, setCar] = useState<Car>({ x: laneToX(1), speed: 0, lane: 1, distance: 0, isBoosting: false });
+  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
 
-  // Redirect if no settings
-  useEffect(() => {
-    if (!settings) {
-      navigate('/');
-    }
-  }, [settings, navigate]);
+  const pressedRef = useRef<Record<string, boolean>>({});
+  const timerRef = useRef<number | null>(null);
+  const obstacleIdRef = useRef(0);
+  const spawnTicksRef = useRef(0);
 
-  // Early return if no settings to prevent crashes
-  if (!settings) {
-    return null;
-  }
+  const topSpeed = useMemo(() => Math.round(selectedDriver.maxSpeed + (car.isBoosting ? 35 : 0)), [selectedDriver.maxSpeed, car.isBoosting]);
+  const progress = Math.min((car.distance / FINISH_DISTANCE) * 100, 100);
 
-  const pausedGame = getPausedGame();
-  
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
-  const [userAnswer, setUserAnswer] = useState('');
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [totalTimeLeft, setTotalTimeLeft] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [stats, setStats] = useState<GameStats>(pausedGame?.stats || {
-    correct: 0,
-    incorrect: 0,
-    totalQuestions: 0,
-    questionsAnswered: [],
-    currentStreak: 0,
-    bestStreak: 0,
-    averageTime: 0,
-    fastestAnswer: Infinity,
-    answerTimes: [],
-    unlockedAchievements: []
-  });
-  const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
-  const [questionsCompleted, setQuestionsCompleted] = useState(pausedGame?.questionsCompleted || 0);
-
-  const effectiveSettings = isDailyChallenge ? {
-    ...settings,
-    totalQuestions: 50,
-    timeLimit: 3,
-    timerMode: 'per-question' as const
-  } : settings;
-
-  const totalQuestions = effectiveSettings.timerMode === 'total' 
-    ? effectiveSettings.totalQuestions || 20 
-    : (effectiveSettings.totalQuestions || Infinity);
-
-
-  useEffect(() => {
-    if (pausedGame) {
-      setCurrentQuestion(pausedGame.currentQuestion);
-      setTimeLeft(pausedGame.timeLeft);
-      setTotalTimeLeft(pausedGame.totalTimeLeft);
-      setQuestionsCompleted(pausedGame.questionsCompleted);
-      clearPausedGame();
-    } else {
-      generateNewQuestion();
-      if (effectiveSettings.timerMode === 'total') {
-        setTotalTimeLeft(effectiveSettings.timeLimit);
-      }
-    }
+  const resetRace = useCallback(() => {
+    setFinished(false);
+    setStarted(false);
+    setTimeElapsed(0);
+    setBoost(100);
+    setScore(0);
+    setMessage('Use ← and → to change lanes. Hold Space for Nitro!');
+    setCar({ x: laneToX(1), speed: 0, lane: 1, distance: 0, isBoosting: false });
+    obstacleIdRef.current = 0;
+    spawnTicksRef.current = 0;
+    setObstacles([]);
   }, []);
 
   useEffect(() => {
-    if (isPaused || feedback || !currentQuestion) return;
-
-    const timer = setInterval(() => {
-      if (effectiveSettings.timerMode === 'per-question') {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            // Handle timeout immediately
-            if (!currentQuestion) return 0;
-            
-            setFeedback('incorrect');
-            setStats(prevStats => ({
-              ...prevStats,
-              incorrect: prevStats.incorrect + 1,
-              totalQuestions: prevStats.totalQuestions + 1,
-              questionsAnswered: [...prevStats.questionsAnswered, currentQuestion],
-              currentStreak: 0,
-              answerTimes: [...prevStats.answerTimes, effectiveSettings.timeLimit]
-            }));
-            setQuestionsCompleted(prev => prev + 1);
-            
-            return 0;
-          }
-          return prev - 1;
-        });
-      } else {
-        setTotalTimeLeft(prev => {
-          if (prev <= 1) {
-            endGame();
-            return 0;
-          }
-          return prev - 1;
-        });
+    const onKeyDown = (event: KeyboardEvent) => {
+      pressedRef.current[event.code] = true;
+      if (!started && !finished && event.code === 'Enter') {
+        setStarted(true);
       }
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isPaused, feedback, currentQuestion, effectiveSettings.timerMode, effectiveSettings.timeLimit]);
-
-  useEffect(() => {
-    if (!isPaused) {
-      inputRef.current?.focus();
-    }
-  }, [currentQuestion, isPaused]);
-
-  // Auto-advance after showing feedback
-  useEffect(() => {
-    if (feedback) {
-      const timer = setTimeout(() => {
-        // Check current questionsCompleted value to decide next action
-        const currentCompleted = questionsCompleted;
-        
-        if (effectiveSettings.timerMode === 'total' || currentCompleted < totalQuestions) {
-          generateNewQuestion();
-        } else {
-          endGame();
-        }
-      }, 1500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [feedback, questionsCompleted, totalQuestions, effectiveSettings.timerMode]);
-
-  const generateNewQuestion = () => {
-    const question = generateQuestion(effectiveSettings);
-    setCurrentQuestion(question);
-    setUserAnswer('');
-    if (effectiveSettings.timerMode === 'per-question') {
-      setTimeLeft(effectiveSettings.timeLimit);
-    }
-    setFeedback(null);
-    questionStartTimeRef.current = Date.now();
-  };
-
-  const checkAchievements = (updatedStats: GameStats) => {
-    return checkGameplayAchievements(updatedStats, stats.unlockedAchievements);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentQuestion || feedback || isPaused) return;
-
-    const answer = parseInt(userAnswer);
-    const isCorrect = answer === currentQuestion.answer;
-    const answerTime = (Date.now() - questionStartTimeRef.current) / 1000;
-
-    setFeedback(isCorrect ? 'correct' : 'incorrect');
-    
-    const updatedStats = {
-      ...stats,
-      correct: stats.correct + (isCorrect ? 1 : 0),
-      incorrect: stats.incorrect + (isCorrect ? 0 : 1),
-      totalQuestions: stats.totalQuestions + 1,
-      questionsAnswered: [...stats.questionsAnswered, currentQuestion],
-      currentStreak: isCorrect ? stats.currentStreak + 1 : 0,
-      bestStreak: isCorrect ? Math.max(stats.bestStreak, stats.currentStreak + 1) : stats.bestStreak,
-      fastestAnswer: isCorrect ? Math.min(stats.fastestAnswer, answerTime) : stats.fastestAnswer,
-      answerTimes: [...stats.answerTimes, answerTime],
-      unlockedAchievements: stats.unlockedAchievements
     };
 
-    if (isCorrect) {
-      const newAchievements = checkAchievements(updatedStats);
-      updatedStats.unlockedAchievements = [...updatedStats.unlockedAchievements, ...newAchievements];
-      newAchievements.forEach(id => unlockAchievement(id));
+    const onKeyUp = (event: KeyboardEvent) => {
+      pressedRef.current[event.code] = false;
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [finished, started]);
+
+  useEffect(() => {
+    if (!started || finished) {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
     }
 
-    setStats(updatedStats);
-    setQuestionsCompleted(prev => prev + 1);
+    timerRef.current = window.setInterval(() => {
+      setTimeElapsed((prev) => prev + FPS / 1000);
+      setCar((prev) => {
+        let nextLane = prev.lane;
+        if (pressedRef.current.ArrowLeft) nextLane = Math.max(0, prev.lane - 1);
+        if (pressedRef.current.ArrowRight) nextLane = Math.min(LANES - 1, prev.lane + 1);
 
-    if (isCorrect) {
-      toast.success('Correct! 🎉', {
-        description: updatedStats.currentStreak > 1 ? `${updatedStats.currentStreak} in a row!` : 'Great job!'
+        const boosting = !!pressedRef.current.Space && boost > 1;
+        const accel = selectedDriver.acceleration + (boosting ? 2.8 : 0);
+        const drag = 1.25;
+        const maxSpeed = selectedDriver.maxSpeed + (boosting ? 35 : 0);
+        const nextSpeed = Math.max(0, Math.min(maxSpeed, prev.speed + accel - drag));
+        const distanceGain = nextSpeed * 0.02;
+
+        if (boosting) {
+          setBoost((b) => Math.max(0, b - 1.2));
+        } else {
+          setBoost((b) => Math.min(100, b + 0.45));
+        }
+
+        const nextDistance = prev.distance + distanceGain;
+        if (nextDistance >= FINISH_DISTANCE) {
+          setFinished(true);
+          setStarted(false);
+          setMessage('Finish line crossed! You are the road champion!');
+          setScore((s) => s + 500);
+        }
+
+        return {
+          x: laneToX(nextLane),
+          lane: nextLane,
+          speed: nextSpeed,
+          distance: nextDistance,
+          isBoosting: boosting,
+        };
       });
-    } else {
-      toast.error('Incorrect 😔', {
-        description: `The answer was ${currentQuestion.answer}`
-      });
+
+      spawnTicksRef.current += 1;
+      if (spawnTicksRef.current > 28) {
+        spawnTicksRef.current = 0;
+        setObstacles((prev) => [
+          ...prev,
+          {
+            id: obstacleIdRef.current++,
+            lane: Math.floor(Math.random() * LANES),
+            y: -60,
+            kind: Math.random() > 0.5 ? 'cone' : 'oil',
+          },
+        ]);
+      }
+
+      setObstacles((prev) =>
+        prev
+          .map((obstacle) => ({ ...obstacle, y: obstacle.y + 8 + car.speed * 0.01 }))
+          .filter((obstacle) => obstacle.y < ROAD_HEIGHT + 120)
+      );
+
+      setScore((prev) => prev + Math.round(car.speed * 0.02));
+    }, FPS);
+
+    return () => {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [car.speed, boost, finished, selectedDriver.acceleration, selectedDriver.maxSpeed, started]);
+
+  useEffect(() => {
+    const hit = obstacles.some((obstacle) => {
+      const carY = ROAD_HEIGHT - CAR_HEIGHT - 30;
+      const obstacleInCarZone = obstacle.y > carY - 10 && obstacle.y < carY + CAR_HEIGHT;
+      const sameLane = obstacle.lane === car.lane;
+      return obstacleInCarZone && sameLane;
+    });
+
+    if (hit && started) {
+      setStarted(false);
+      setFinished(true);
+      setMessage('Crash! Hit R to retry or click race again.');
+      setScore((prev) => Math.max(0, prev - 250));
     }
-  };
+  }, [car.lane, obstacles, started]);
 
-  const handlePause = () => {
-    setIsPaused(true);
-    savePausedGame({
-      settings: effectiveSettings,
-      stats,
-      currentQuestion,
-      timeLeft,
-      totalTimeLeft,
-      questionsCompleted,
-      isDailyChallenge
-    });
-  };
+  useEffect(() => {
+    const onRetry = (event: KeyboardEvent) => {
+      if (event.code === 'KeyR') resetRace();
+    };
 
-  const handleResume = () => {
-    setIsPaused(false);
-    questionStartTimeRef.current = Date.now();
-  };
-
-  const endGame = () => {
-    clearPausedGame();
-    navigate('/results', { 
-      state: { 
-        stats, 
-        settings: effectiveSettings,
-        isDailyChallenge 
-      } 
-    });
-  };
-
-  if (!currentQuestion) return null;
-
-  const operatorSymbol = currentQuestion.operation === 'multiplication' ? '×' : '÷';
-  const progressPercentage = stats.totalQuestions > 0 
-    ? (stats.correct / stats.totalQuestions) * 100 
-    : 0;
+    window.addEventListener('keydown', onRetry);
+    return () => window.removeEventListener('keydown', onRetry);
+  }, [resetRace]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/10 p-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="p-4 bg-success/5 border-success/20">
-            <div className="flex items-center gap-2">
-              <Check className="w-5 h-5 text-success" />
-              <div>
-                <p className="text-xs text-muted-foreground">Correct</p>
-                <p className="text-2xl font-bold text-success">{stats.correct}</p>
-              </div>
-            </div>
-          </Card>
-          
-          <Card className="p-4 bg-destructive/5 border-destructive/20">
-            <div className="flex items-center gap-2">
-              <X className="w-5 h-5 text-destructive" />
-              <div>
-                <p className="text-xs text-muted-foreground">Missed</p>
-                <p className="text-2xl font-bold text-destructive">{stats.incorrect}</p>
-              </div>
-            </div>
-          </Card>
-          
-          <Card className="p-4 bg-primary/5 border-primary/20">
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-primary" />
-              <div>
-                <p className="text-xs text-muted-foreground">Time</p>
-                <p className="text-2xl font-bold text-primary">
-                  {effectiveSettings.timerMode === 'per-question' ? timeLeft : totalTimeLeft}s
-                </p>
-              </div>
-            </div>
-          </Card>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white px-4 py-6">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Button variant="outline" onClick={() => navigate('/')}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+          <h1 className="text-3xl font-black tracking-tight">Sports Car Street Sprint</h1>
+          <Button onClick={resetRace}>Race Again</Button>
         </div>
 
-        <Card className="p-4">
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Accuracy</span>
-              <span className="font-bold">{Math.round(progressPercentage)}%</span>
-            </div>
-            <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-success via-primary to-secondary transition-all duration-300"
-                style={{ width: `${progressPercentage}%` }}
-              />
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">
-                {effectiveSettings.timerMode === 'total' 
-                  ? `Questions: ${questionsCompleted} / ${totalQuestions}`
-                  : `Question ${questionsCompleted + 1}`
-                }
-              </span>
-              {stats.currentStreak > 0 && (
-                <span className="text-accent font-bold">🔥 {stats.currentStreak} streak</span>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {isPaused && (
-          <Card className="p-8 text-center space-y-4 animate-fade-in">
-            <h2 className="text-3xl font-bold">Game Paused</h2>
-            <p className="text-muted-foreground">Take a break! Your progress is saved.</p>
-            <div className="flex gap-4 justify-center">
-              <Button onClick={handleResume} size="lg">
-                <Play className="w-5 h-5 mr-2" />
-                Resume
-              </Button>
-              <Button variant="outline" onClick={endGame} size="lg">
-                End Game
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {!isPaused && (
-          <Card className="p-8 text-center space-y-6 animate-scale-in">
-            <div className="space-y-4">
-              <div className="text-7xl font-bold text-primary">
-                {currentQuestion.num1} {operatorSymbol} {currentQuestion.num2}
+        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+          <Card className="overflow-hidden border-slate-700 bg-slate-900">
+            <div className="relative mx-auto mt-4 h-[560px] w-[360px] rounded-xl border-4 border-slate-500 bg-gradient-to-b from-slate-700 to-slate-900">
+              <div className="absolute inset-0 opacity-40">
+                {Array.from({ length: 14 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="absolute left-1/2 h-12 w-2 -translate-x-1/2 rounded bg-yellow-300"
+                    style={{ top: `${(index * 80 + (timeElapsed * 250) % 80) % 620 - 60}px` }}
+                  />
+                ))}
               </div>
-              
-              {feedback && (
-                <div className={`text-3xl font-bold animate-scale-in ${
-                  feedback === 'correct' ? 'text-success' : 'text-destructive'
-                }`}>
-                  {feedback === 'correct' ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <Check className="w-8 h-8" />
-                      <span>Correct!</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-center gap-2">
-                        <X className="w-8 h-8" />
-                        <span>{userAnswer ? 'Incorrect!' : 'Time\'s Up! ⏰'}</span>
-                      </div>
-                      <div className="text-xl text-muted-foreground">
-                        The answer was {currentQuestion.answer}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <Input
-                  ref={inputRef}
-                  type="number"
-                  value={userAnswer}
-                  onChange={(e) => setUserAnswer(e.target.value)}
-                  placeholder="Your answer"
-                  className="text-4xl text-center h-20 text-foreground"
-                  disabled={feedback !== null}
-                />
-                
-                <div className="flex gap-4">
-                  <Button
-                    type="submit"
-                    size="lg"
-                    className="flex-1 text-xl h-16"
-                    disabled={!userAnswer || feedback !== null}
-                  >
-                    <Check className="w-6 h-6 mr-2" />
-                    Submit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="lg"
-                    onClick={handlePause}
-                    className="h-16 px-8"
-                  >
-                    <Pause className="w-6 h-6" />
-                  </Button>
-                </div>
-              </form>
-            </div>
 
-            <Button
-              variant="outline"
-              onClick={endGame}
-              className="w-full"
-            >
-              End Game
-            </Button>
+              {obstacles.map((obstacle) => (
+                <div
+                  key={obstacle.id}
+                  className={`absolute h-14 w-20 rounded-md ${
+                    obstacle.kind === 'cone' ? 'bg-orange-500' : 'bg-slate-700'
+                  } border-2 border-white/20`}
+                  style={{ left: laneToX(obstacle.lane), top: obstacle.y }}
+                />
+              ))}
+
+              <div
+                className={`absolute h-20 w-24 rounded-lg border-2 border-white/40 bg-gradient-to-br ${selectedDriver.color} ${
+                  car.isBoosting ? 'shadow-[0_0_22px_4px_rgba(250,204,21,0.8)]' : ''
+                }`}
+                style={{ left: car.x - 8, top: ROAD_HEIGHT - CAR_HEIGHT - 30, transition: `left ${selectedDriver.handling}s ease-out` }}
+              >
+                <div className="absolute -bottom-2 left-2 h-3 w-5 rounded bg-red-500" />
+                <div className="absolute -bottom-2 right-2 h-3 w-5 rounded bg-red-500" />
+              </div>
+            </div>
           </Card>
-        )}
+
+          <div className="space-y-4">
+            <Card className="space-y-4 border-slate-700 bg-slate-900 p-5">
+              <h2 className="text-xl font-bold">Choose Driver</h2>
+              <div className="grid gap-3">
+                {drivers.map((driver) => (
+                  <button
+                    key={driver.name}
+                    type="button"
+                    onClick={() => {
+                      if (!started) {
+                        setSelectedDriver(driver);
+                        setMessage(`${driver.name} is ready to burn rubber.`);
+                      }
+                    }}
+                    className={`rounded-lg border p-3 text-left transition ${
+                      selectedDriver.name === driver.name ? 'border-cyan-400 bg-cyan-400/10' : 'border-slate-600 bg-slate-800/50'
+                    }`}
+                  >
+                    <p className="font-semibold">{driver.name}</p>
+                    <p className="text-xs text-slate-300">
+                      Max {driver.maxSpeed} km/h • Accel {driver.acceleration.toFixed(1)} • Handling {driver.handling.toFixed(2)}s
+                    </p>
+                  </button>
+                ))}
+              </div>
+              <Button className="w-full" onClick={() => setStarted(true)} disabled={started || finished}>
+                Start Race (Enter)
+              </Button>
+            </Card>
+
+            <Card className="space-y-4 border-slate-700 bg-slate-900 p-5">
+              <h2 className="text-xl font-bold">Dashboard</h2>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-md bg-slate-800 p-3">
+                  <p className="text-slate-300">Speedometer</p>
+                  <p className="mt-1 flex items-center gap-2 text-2xl font-black text-cyan-300">
+                    <Gauge className="h-5 w-5" />
+                    {Math.round(car.speed)} km/h
+                  </p>
+                </div>
+                <div className="rounded-md bg-slate-800 p-3">
+                  <p className="text-slate-300">Top Speed</p>
+                  <p className="mt-1 text-2xl font-black text-emerald-300">{topSpeed} km/h</p>
+                </div>
+                <div className="rounded-md bg-slate-800 p-3">
+                  <p className="text-slate-300">Timer</p>
+                  <p className="mt-1 flex items-center gap-2 text-2xl font-black text-amber-300">
+                    <Timer className="h-5 w-5" />
+                    {timeElapsed.toFixed(1)}s
+                  </p>
+                </div>
+                <div className="rounded-md bg-slate-800 p-3">
+                  <p className="text-slate-300">Score</p>
+                  <p className="mt-1 flex items-center gap-2 text-2xl font-black text-pink-300">
+                    <Trophy className="h-5 w-5" />
+                    {score}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span>Nitro</span>
+                  <span>{Math.round(boost)}%</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-slate-700">
+                  <div className="h-full bg-gradient-to-r from-yellow-300 to-orange-500" style={{ width: `${boost}%` }} />
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span>Road Progress</span>
+                  <span>{progress.toFixed(1)}%</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-slate-700">
+                  <div className="h-full bg-gradient-to-r from-cyan-400 to-blue-600" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+
+              <p className="rounded-md border border-cyan-500/40 bg-cyan-500/10 p-3 text-sm text-cyan-100">{message}</p>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
