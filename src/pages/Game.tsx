@@ -58,6 +58,16 @@ const Game = () => {
   const timerRef = useRef<number | null>(null);
   const obstacleIdRef = useRef(0);
   const spawnTicksRef = useRef(0);
+  const boostRef = useRef(100);
+  const speedRef = useRef(0);
+
+  useEffect(() => {
+    boostRef.current = boost;
+  }, [boost]);
+
+  useEffect(() => {
+    speedRef.current = car.speed;
+  }, [car.speed]);
 
   const topSpeed = useMemo(() => Math.round(selectedDriver.maxSpeed + (car.isBoosting ? 35 : 0)), [selectedDriver.maxSpeed, car.isBoosting]);
   const progress = Math.min((car.distance / FINISH_DISTANCE) * 100, 100);
@@ -72,6 +82,8 @@ const Game = () => {
     setCar({ x: laneToX(1), speed: 0, lane: 1, distance: 0, isBoosting: false });
     obstacleIdRef.current = 0;
     spawnTicksRef.current = 0;
+    boostRef.current = 100;
+    speedRef.current = 0;
     setObstacles([]);
   }, []);
 
@@ -79,6 +91,9 @@ const Game = () => {
     const onKeyDown = (event: KeyboardEvent) => {
       pressedRef.current[event.code] = true;
       if (!started && !finished && event.code === 'Enter') {
+        setStarted(true);
+      }
+      if (!started && !finished && event.code === 'Space') {
         setStarted(true);
       }
     };
@@ -108,10 +123,10 @@ const Game = () => {
       setTimeElapsed((prev) => prev + FPS / 1000);
       setCar((prev) => {
         let nextLane = prev.lane;
-        if (pressedRef.current.ArrowLeft) nextLane = Math.max(0, prev.lane - 1);
-        if (pressedRef.current.ArrowRight) nextLane = Math.min(LANES - 1, prev.lane + 1);
+        if (pressedRef.current.ArrowLeft || pressedRef.current.KeyA) nextLane = Math.max(0, prev.lane - 1);
+        if (pressedRef.current.ArrowRight || pressedRef.current.KeyD) nextLane = Math.min(LANES - 1, prev.lane + 1);
 
-        const boosting = !!pressedRef.current.Space && boost > 1;
+        const boosting = !!pressedRef.current.Space && boostRef.current > 1;
         const accel = selectedDriver.acceleration + (boosting ? 2.8 : 0);
         const drag = 1.25;
         const maxSpeed = selectedDriver.maxSpeed + (boosting ? 35 : 0);
@@ -157,11 +172,11 @@ const Game = () => {
 
       setObstacles((prev) =>
         prev
-          .map((obstacle) => ({ ...obstacle, y: obstacle.y + 8 + car.speed * 0.01 }))
+          .map((obstacle) => ({ ...obstacle, y: obstacle.y + 8 + speedRef.current * 0.01 }))
           .filter((obstacle) => obstacle.y < ROAD_HEIGHT + 120)
       );
 
-      setScore((prev) => prev + Math.round(car.speed * 0.02));
+      setScore((prev) => prev + Math.round(speedRef.current * 0.02));
     }, FPS);
 
     return () => {
@@ -170,7 +185,7 @@ const Game = () => {
         timerRef.current = null;
       }
     };
-  }, [car.speed, boost, finished, selectedDriver.acceleration, selectedDriver.maxSpeed, started]);
+  }, [finished, selectedDriver.acceleration, selectedDriver.maxSpeed, started]);
 
   useEffect(() => {
     const hit = obstacles.some((obstacle) => {
@@ -241,6 +256,15 @@ const Game = () => {
                 <div className="absolute -bottom-2 left-2 h-3 w-5 rounded bg-red-500" />
                 <div className="absolute -bottom-2 right-2 h-3 w-5 rounded bg-red-500" />
               </div>
+
+              {!started && !finished && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-950/35 text-center">
+                  <div className="rounded-xl border border-cyan-300/60 bg-slate-900/85 p-5">
+                    <p className="text-lg font-bold text-cyan-200">Press Enter to Start</p>
+                    <p className="mt-1 text-sm text-slate-200">Use ←/→ or A/D to steer • Hold Space for Nitro</p>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -269,8 +293,8 @@ const Game = () => {
                   </button>
                 ))}
               </div>
-              <Button className="w-full" onClick={() => setStarted(true)} disabled={started || finished}>
-                Start Race (Enter)
+              <Button className="w-full" onClick={() => setStarted(true)} disabled={started}>
+                {finished ? 'Start New Race' : 'Start Race (Enter)'}
               </Button>
             </Card>
 
