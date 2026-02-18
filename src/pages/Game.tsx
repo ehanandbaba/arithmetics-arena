@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, Gauge, Timer, Trophy } from 'lucide-react';
+import { ArrowLeft, Gauge, Shield, Timer, Trophy, Zap } from 'lucide-react';
 
 type Driver = {
   name: string;
@@ -12,121 +12,126 @@ type Driver = {
   handling: number;
 };
 
-type Car = {
-  x: number;
-  speed: number;
+type PlayerCar = {
   lane: number;
+  speed: number;
   distance: number;
-  isBoosting: boolean;
+  nitro: number;
+  integrity: number;
 };
 
-type Obstacle = {
+type TrafficCar = {
   id: number;
   lane: number;
   y: number;
-  kind: 'cone' | 'oil';
+  speed: number;
+  color: string;
+};
+
+type Pickup = {
+  id: number;
+  lane: number;
+  y: number;
+  kind: 'nitro' | 'score';
 };
 
 const LANES = 3;
 const ROAD_HEIGHT = 560;
 const ROAD_WIDTH = 360;
 const CAR_HEIGHT = 80;
-const FINISH_DISTANCE = 2500;
-const FPS = 1000 / 60;
+const FINISH_DISTANCE = 6000;
 
 const drivers: Driver[] = [
-  { name: 'Nova Blaze', color: 'from-red-500 to-orange-400', maxSpeed: 230, acceleration: 5.2, handling: 0.18 },
-  { name: 'Kai Drift', color: 'from-cyan-500 to-sky-400', maxSpeed: 210, acceleration: 6.1, handling: 0.24 },
-  { name: 'Raven Volt', color: 'from-violet-500 to-fuchsia-400', maxSpeed: 245, acceleration: 4.5, handling: 0.15 },
+  { name: 'Nova Blaze', color: 'from-red-500 to-orange-400', maxSpeed: 240, acceleration: 145, handling: 0.18 },
+  { name: 'Kai Drift', color: 'from-cyan-500 to-sky-400', maxSpeed: 225, acceleration: 165, handling: 0.22 },
+  { name: 'Raven Volt', color: 'from-violet-500 to-fuchsia-400', maxSpeed: 255, acceleration: 130, handling: 0.14 },
 ];
 
 const laneToX = (lane: number) => 20 + lane * ((ROAD_WIDTH - 40) / LANES);
 
-const isStartKey = (event: KeyboardEvent) =>
-  event.code === 'Enter' || event.code === 'NumpadEnter' || event.code === 'Space' || event.key === ' ';
-
-const isControlKey = (event: KeyboardEvent) =>
-  ['ArrowLeft', 'ArrowRight', 'Space', 'Enter', 'NumpadEnter', 'KeyA', 'KeyD', 'KeyR'].includes(event.code);
-
 const Game = () => {
   const navigate = useNavigate();
+  const raceAreaRef = useRef<HTMLDivElement | null>(null);
+  const pressedRef = useRef<Record<string, boolean>>({});
+  const animationRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number>(0);
+  const trafficIdRef = useRef(0);
+  const pickupIdRef = useRef(0);
+  const trafficSpawnRef = useRef(0);
+  const pickupSpawnRef = useRef(0);
+  const laneCooldownRef = useRef(0);
+
   const [selectedDriver, setSelectedDriver] = useState<Driver>(drivers[0]);
   const [started, setStarted] = useState(false);
   const [finished, setFinished] = useState(false);
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const [boost, setBoost] = useState(100);
+  const [won, setWon] = useState(false);
+  const [message, setMessage] = useState('Press Enter or click Start to race.');
+
+  const [player, setPlayer] = useState<PlayerCar>({ lane: 1, speed: 0, distance: 0, nitro: 100, integrity: 100 });
+  const [traffic, setTraffic] = useState<TrafficCar[]>([]);
+  const [pickups, setPickups] = useState<Pickup[]>([]);
+
   const [score, setScore] = useState(0);
-  const [message, setMessage] = useState('Use ← and → to change lanes. Hold Space for Nitro!');
-  const [car, setCar] = useState<Car>({ x: laneToX(1), speed: 0, lane: 1, distance: 0, isBoosting: false });
-  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+  const [timeElapsed, setTimeElapsed] = useState(0);
 
-  const pressedRef = useRef<Record<string, boolean>>({});
-  const timerRef = useRef<number | null>(null);
-  const obstacleIdRef = useRef(0);
-  const spawnTicksRef = useRef(0);
-  const boostRef = useRef(100);
-  const speedRef = useRef(0);
-  const raceAreaRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef(player);
+  const trafficRef = useRef(traffic);
+  const pickupsRef = useRef(pickups);
 
   useEffect(() => {
-    boostRef.current = boost;
-  }, [boost]);
+    playerRef.current = player;
+  }, [player]);
 
   useEffect(() => {
-    speedRef.current = car.speed;
-  }, [car.speed]);
+    trafficRef.current = traffic;
+  }, [traffic]);
 
   useEffect(() => {
-    raceAreaRef.current?.focus();
-  }, []);
-
-  const topSpeed = useMemo(() => Math.round(selectedDriver.maxSpeed + (car.isBoosting ? 35 : 0)), [selectedDriver.maxSpeed, car.isBoosting]);
-  const progress = Math.min((car.distance / FINISH_DISTANCE) * 100, 100);
+    pickupsRef.current = pickups;
+  }, [pickups]);
 
   const resetRace = useCallback(() => {
-    setFinished(false);
     setStarted(false);
-    setTimeElapsed(0);
-    setBoost(100);
+    setFinished(false);
+    setWon(false);
+    setMessage('Press Enter or click Start to race.');
     setScore(0);
-    setMessage('Use ← and → to change lanes. Hold Space for Nitro!');
-    setCar({ x: laneToX(1), speed: 0, lane: 1, distance: 0, isBoosting: false });
-    obstacleIdRef.current = 0;
-    spawnTicksRef.current = 0;
-    boostRef.current = 100;
-    speedRef.current = 0;
-    setObstacles([]);
+    setTimeElapsed(0);
+    trafficSpawnRef.current = 0;
+    pickupSpawnRef.current = 0;
+    laneCooldownRef.current = 0;
+    trafficIdRef.current = 0;
+    pickupIdRef.current = 0;
+    setPlayer({ lane: 1, speed: 0, distance: 0, nitro: 100, integrity: 100 });
+    setTraffic([]);
+    setPickups([]);
+    pressedRef.current = {};
   }, []);
 
   const startRace = useCallback(() => {
     if (finished) {
-      setFinished(false);
-      setTimeElapsed(0);
-      setBoost(100);
-      setScore(0);
-      setCar({ x: laneToX(1), speed: 0, lane: 1, distance: 0, isBoosting: false });
-      setObstacles([]);
-      obstacleIdRef.current = 0;
-      spawnTicksRef.current = 0;
-      boostRef.current = 100;
-      speedRef.current = 0;
+      resetRace();
     }
-
     setStarted(true);
-    setMessage('Race started! Dodge traffic and push your top speed.');
+    setMessage('Race live! Dodge traffic, grab boosts, and hit the finish line.');
     raceAreaRef.current?.focus();
-  }, [finished]);
+  }, [finished, resetRace]);
+
+  useEffect(() => {
+    raceAreaRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       pressedRef.current[event.code] = true;
-
-      if (isControlKey(event)) {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'ShiftLeft', 'ShiftRight', 'Enter', 'NumpadEnter', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyR'].includes(event.code)) {
         event.preventDefault();
       }
-
-      if (!started && isStartKey(event)) {
+      if (!started && !finished && (event.code === 'Enter' || event.code === 'NumpadEnter')) {
         startRace();
+      }
+      if (event.code === 'KeyR') {
+        resetRace();
       }
     };
 
@@ -134,129 +139,182 @@ const Game = () => {
       pressedRef.current[event.code] = false;
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
-  }, [startRace, started]);
-
-  useEffect(() => {
-    const clearPressedKeys = () => {
+    const clearKeys = () => {
       pressedRef.current = {};
     };
 
-    window.addEventListener('blur', clearPressedKeys);
-    document.addEventListener('visibilitychange', clearPressedKeys);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', clearKeys);
+    document.addEventListener('visibilitychange', clearKeys);
 
     return () => {
-      window.removeEventListener('blur', clearPressedKeys);
-      document.removeEventListener('visibilitychange', clearPressedKeys);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', clearKeys);
+      document.removeEventListener('visibilitychange', clearKeys);
     };
-  }, []);
+  }, [finished, resetRace, startRace, started]);
 
   useEffect(() => {
     if (!started || finished) {
-      if (timerRef.current) {
-        window.clearInterval(timerRef.current);
-        timerRef.current = null;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
       return;
     }
 
-    timerRef.current = window.setInterval(() => {
-      setTimeElapsed((prev) => prev + FPS / 1000);
-      setCar((prev) => {
-        let nextLane = prev.lane;
-        if (pressedRef.current.ArrowLeft || pressedRef.current.KeyA) nextLane = Math.max(0, prev.lane - 1);
-        if (pressedRef.current.ArrowRight || pressedRef.current.KeyD) nextLane = Math.min(LANES - 1, prev.lane + 1);
+    const step = (timestamp: number) => {
+      if (!lastTimeRef.current) {
+        lastTimeRef.current = timestamp;
+      }
+      const dt = Math.min((timestamp - lastTimeRef.current) / 1000, 0.05);
+      lastTimeRef.current = timestamp;
 
-        const boosting = !!pressedRef.current.Space && boostRef.current > 1;
-        const accel = selectedDriver.acceleration + (boosting ? 2.8 : 0);
-        const drag = 1.25;
-        const maxSpeed = selectedDriver.maxSpeed + (boosting ? 35 : 0);
-        const nextSpeed = Math.max(0, Math.min(maxSpeed, prev.speed + accel - drag));
-        const distanceGain = nextSpeed * 0.02;
+      laneCooldownRef.current = Math.max(0, laneCooldownRef.current - dt);
 
-        if (boosting) {
-          setBoost((b) => Math.max(0, b - 1.2));
-        } else {
-          setBoost((b) => Math.min(100, b + 0.45));
+      let nextPlayer = { ...playerRef.current };
+      const steeringLeft = pressedRef.current.ArrowLeft || pressedRef.current.KeyA;
+      const steeringRight = pressedRef.current.ArrowRight || pressedRef.current.KeyD;
+
+      if (steeringLeft && laneCooldownRef.current <= 0) {
+        nextPlayer.lane = Math.max(0, nextPlayer.lane - 1);
+        laneCooldownRef.current = selectedDriver.handling;
+      }
+
+      if (steeringRight && laneCooldownRef.current <= 0) {
+        nextPlayer.lane = Math.min(LANES - 1, nextPlayer.lane + 1);
+        laneCooldownRef.current = selectedDriver.handling;
+      }
+
+      const accelerating = pressedRef.current.ArrowUp || pressedRef.current.KeyW;
+      const braking = pressedRef.current.ArrowDown || pressedRef.current.KeyS;
+      const nitroPressed = pressedRef.current.Space || pressedRef.current.ShiftLeft || pressedRef.current.ShiftRight;
+      const nitroActive = nitroPressed && nextPlayer.nitro > 0;
+
+      const accel = accelerating ? selectedDriver.acceleration : selectedDriver.acceleration * 0.35;
+      const brake = braking ? 220 : 90;
+      const topSpeed = selectedDriver.maxSpeed + (nitroActive ? 45 : 0);
+
+      nextPlayer.speed = Math.max(0, Math.min(topSpeed, nextPlayer.speed + accel * dt - brake * dt));
+      if (nitroActive) {
+        nextPlayer.nitro = Math.max(0, nextPlayer.nitro - 30 * dt);
+      } else {
+        nextPlayer.nitro = Math.min(100, nextPlayer.nitro + 12 * dt);
+      }
+
+      nextPlayer.distance += nextPlayer.speed * dt;
+
+      trafficSpawnRef.current += dt;
+      pickupSpawnRef.current += dt;
+
+      let nextTraffic = trafficRef.current.map((car) => ({
+        ...car,
+        y: car.y + (120 + nextPlayer.speed * 0.65 - car.speed) * dt,
+      }));
+
+      if (trafficSpawnRef.current > 0.9) {
+        trafficSpawnRef.current = 0;
+        nextTraffic.push({
+          id: trafficIdRef.current++,
+          lane: Math.floor(Math.random() * LANES),
+          y: -90,
+          speed: 55 + Math.random() * 80,
+          color: Math.random() > 0.5 ? 'bg-emerald-400' : 'bg-rose-400',
+        });
+      }
+
+      nextTraffic = nextTraffic.filter((car) => car.y < ROAD_HEIGHT + 120);
+
+      let nextPickups = pickupsRef.current.map((item) => ({
+        ...item,
+        y: item.y + (110 + nextPlayer.speed * 0.6) * dt,
+      }));
+
+      if (pickupSpawnRef.current > 2.2) {
+        pickupSpawnRef.current = 0;
+        nextPickups.push({
+          id: pickupIdRef.current++,
+          lane: Math.floor(Math.random() * LANES),
+          y: -70,
+          kind: Math.random() > 0.45 ? 'nitro' : 'score',
+        });
+      }
+
+      nextPickups = nextPickups.filter((item) => item.y < ROAD_HEIGHT + 90);
+
+      const playerY = ROAD_HEIGHT - CAR_HEIGHT - 30;
+
+      const collidingCarIds = new Set<number>();
+      nextTraffic.forEach((car) => {
+        const sameLane = car.lane === nextPlayer.lane;
+        const intersects = car.y > playerY - 40 && car.y < playerY + CAR_HEIGHT;
+        if (sameLane && intersects) {
+          collidingCarIds.add(car.id);
         }
-
-        const nextDistance = prev.distance + distanceGain;
-        if (nextDistance >= FINISH_DISTANCE) {
-          setFinished(true);
-          setStarted(false);
-          setMessage('Finish line crossed! You are the road champion!');
-          setScore((s) => s + 500);
-        }
-
-        return {
-          x: laneToX(nextLane),
-          lane: nextLane,
-          speed: nextSpeed,
-          distance: nextDistance,
-          isBoosting: boosting,
-        };
       });
 
-      spawnTicksRef.current += 1;
-      if (spawnTicksRef.current > 28) {
-        spawnTicksRef.current = 0;
-        setObstacles((prev) => [
-          ...prev,
-          {
-            id: obstacleIdRef.current++,
-            lane: Math.floor(Math.random() * LANES),
-            y: -60,
-            kind: Math.random() > 0.5 ? 'cone' : 'oil',
-          },
-        ]);
+      if (collidingCarIds.size > 0) {
+        nextPlayer.integrity = Math.max(0, nextPlayer.integrity - 28 * dt * collidingCarIds.size * 6);
+        nextPlayer.speed = Math.max(0, nextPlayer.speed - 260 * dt);
       }
 
-      setObstacles((prev) =>
-        prev
-          .map((obstacle) => ({ ...obstacle, y: obstacle.y + 8 + speedRef.current * 0.01 }))
-          .filter((obstacle) => obstacle.y < ROAD_HEIGHT + 120)
-      );
+      const pickedIds = new Set<number>();
+      nextPickups.forEach((item) => {
+        const sameLane = item.lane === nextPlayer.lane;
+        const intersects = item.y > playerY - 25 && item.y < playerY + CAR_HEIGHT;
+        if (sameLane && intersects) {
+          pickedIds.add(item.id);
+          if (item.kind === 'nitro') {
+            nextPlayer.nitro = Math.min(100, nextPlayer.nitro + 35);
+          } else {
+            setScore((prev) => prev + 140);
+          }
+        }
+      });
 
-      setScore((prev) => prev + Math.round(speedRef.current * 0.02));
-    }, FPS);
+      nextTraffic = nextTraffic.filter((car) => !collidingCarIds.has(car.id));
+      nextPickups = nextPickups.filter((item) => !pickedIds.has(item.id));
+
+      if (nextPlayer.integrity <= 0) {
+        setStarted(false);
+        setFinished(true);
+        setWon(false);
+        setMessage('Your car is wrecked. Press R or Start to race again.');
+      }
+
+      if (nextPlayer.distance >= FINISH_DISTANCE) {
+        setStarted(false);
+        setFinished(true);
+        setWon(true);
+        setMessage('Finish line crossed! You won this street sprint.');
+        setScore((prev) => prev + 900);
+      }
+
+      setPlayer(nextPlayer);
+      setTraffic(nextTraffic);
+      setPickups(nextPickups);
+      setTimeElapsed((prev) => prev + dt);
+      setScore((prev) => prev + Math.round(nextPlayer.speed * dt * 0.35));
+
+      if (started && !finished) {
+        animationRef.current = requestAnimationFrame(step);
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(step);
 
     return () => {
-      if (timerRef.current) {
-        window.clearInterval(timerRef.current);
-        timerRef.current = null;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
+      lastTimeRef.current = 0;
     };
-  }, [finished, selectedDriver.acceleration, selectedDriver.maxSpeed, started]);
+  }, [finished, selectedDriver.acceleration, selectedDriver.handling, selectedDriver.maxSpeed, started]);
 
-  useEffect(() => {
-    const hit = obstacles.some((obstacle) => {
-      const carY = ROAD_HEIGHT - CAR_HEIGHT - 30;
-      const obstacleInCarZone = obstacle.y > carY - 10 && obstacle.y < carY + CAR_HEIGHT;
-      const sameLane = obstacle.lane === car.lane;
-      return obstacleInCarZone && sameLane;
-    });
-
-    if (hit && started) {
-      setStarted(false);
-      setFinished(true);
-      setMessage('Crash! Hit R to retry or click race again.');
-      setScore((prev) => Math.max(0, prev - 250));
-    }
-  }, [car.lane, obstacles, started]);
-
-  useEffect(() => {
-    const onRetry = (event: KeyboardEvent) => {
-      if (event.code === 'KeyR') resetRace();
-    };
-
-    window.addEventListener('keydown', onRetry);
-    return () => window.removeEventListener('keydown', onRetry);
-  }, [resetRace]);
+  const progress = useMemo(() => Math.min((player.distance / FINISH_DISTANCE) * 100, 100), [player.distance]);
 
   return (
     <div
@@ -272,7 +330,7 @@ const Game = () => {
             Back
           </Button>
           <h1 className="text-3xl font-black tracking-tight">Sports Car Street Sprint</h1>
-          <Button onClick={resetRace}>Race Again</Button>
+          <Button onClick={resetRace}>Reset Race (R)</Button>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
@@ -283,26 +341,38 @@ const Game = () => {
                   <div
                     key={index}
                     className="absolute left-1/2 h-12 w-2 -translate-x-1/2 rounded bg-yellow-300"
-                    style={{ top: `${(index * 80 + (timeElapsed * 250) % 80) % 620 - 60}px` }}
+                    style={{ top: `${(index * 80 + (timeElapsed * 320) % 80) % 620 - 60}px` }}
                   />
                 ))}
               </div>
 
-              {obstacles.map((obstacle) => (
+              {traffic.map((car) => (
                 <div
-                  key={obstacle.id}
-                  className={`absolute h-14 w-20 rounded-md ${
-                    obstacle.kind === 'cone' ? 'bg-orange-500' : 'bg-slate-700'
-                  } border-2 border-white/20`}
-                  style={{ left: laneToX(obstacle.lane), top: obstacle.y }}
+                  key={car.id}
+                  className={`absolute h-16 w-[88px] rounded-md border-2 border-white/20 ${car.color}`}
+                  style={{ left: laneToX(car.lane), top: car.y }}
+                />
+              ))}
+
+              {pickups.map((item) => (
+                <div
+                  key={item.id}
+                  className={`absolute h-10 w-10 rounded-full border-2 ${
+                    item.kind === 'nitro' ? 'border-amber-100 bg-amber-400' : 'border-cyan-100 bg-cyan-400'
+                  }`}
+                  style={{ left: laneToX(item.lane) + 22, top: item.y }}
                 />
               ))}
 
               <div
                 className={`absolute h-20 w-24 rounded-lg border-2 border-white/40 bg-gradient-to-br ${selectedDriver.color} ${
-                  car.isBoosting ? 'shadow-[0_0_22px_4px_rgba(250,204,21,0.8)]' : ''
+                  pressedRef.current.Space ? 'shadow-[0_0_22px_4px_rgba(250,204,21,0.8)]' : ''
                 }`}
-                style={{ left: car.x - 8, top: ROAD_HEIGHT - CAR_HEIGHT - 30, transition: `left ${selectedDriver.handling}s ease-out` }}
+                style={{
+                  left: laneToX(player.lane) - 8,
+                  top: ROAD_HEIGHT - CAR_HEIGHT - 30,
+                  transition: `left ${selectedDriver.handling}s ease-out`,
+                }}
               >
                 <div className="absolute -bottom-2 left-2 h-3 w-5 rounded bg-red-500" />
                 <div className="absolute -bottom-2 right-2 h-3 w-5 rounded bg-red-500" />
@@ -315,10 +385,20 @@ const Game = () => {
                   className="absolute inset-0 flex items-center justify-center bg-slate-950/35 text-center"
                 >
                   <div className="rounded-xl border border-cyan-300/60 bg-slate-900/85 p-5">
-                    <p className="text-lg font-bold text-cyan-200">Press Enter or Click to Start</p>
-                    <p className="mt-1 text-sm text-slate-200">Use ←/→ or A/D to steer • Hold Space for Nitro • R to reset</p>
+                    <p className="text-lg font-bold text-cyan-200">Real race ready. Press Enter or click Start</p>
+                    <p className="mt-1 text-sm text-slate-200">W/↑ accelerate • S/↓ brake • A,D or ←,→ steer • Space nitro • R reset</p>
                   </div>
                 </button>
+              )}
+
+              {finished && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60 text-center">
+                  <div className="rounded-xl border border-cyan-300/60 bg-slate-900/90 p-6">
+                    <p className="text-2xl font-black text-cyan-200">{won ? 'Victory!' : 'Game Over'}</p>
+                    <p className="mt-2 text-sm text-slate-200">{message}</p>
+                    <Button className="mt-4" onClick={startRace}>Start New Race</Button>
+                  </div>
+                </div>
               )}
             </div>
           </Card>
@@ -334,7 +414,7 @@ const Game = () => {
                     onClick={() => {
                       if (!started) {
                         setSelectedDriver(driver);
-                        setMessage(`${driver.name} is ready to burn rubber.`);
+                        setMessage(`${driver.name} selected. Ready to race.`);
                       }
                     }}
                     className={`rounded-lg border p-3 text-left transition ${
@@ -343,33 +423,32 @@ const Game = () => {
                   >
                     <p className="font-semibold">{driver.name}</p>
                     <p className="text-xs text-slate-300">
-                      Max {driver.maxSpeed} km/h • Accel {driver.acceleration.toFixed(1)} • Handling {driver.handling.toFixed(2)}s
+                      Top {driver.maxSpeed} km/h • Accel {driver.acceleration.toFixed(0)} • Handling {driver.handling.toFixed(2)}s
                     </p>
                   </button>
                 ))}
               </div>
-              <Button
-                className="w-full"
-                onClick={startRace}
-                disabled={started}
-              >
-                {finished ? 'Start New Race' : 'Start Race (Enter)'}
+              <Button className="w-full" onClick={startRace} disabled={started && !finished}>
+                {started ? 'Racing...' : finished ? 'Start New Race' : 'Start Race (Enter)'}
               </Button>
             </Card>
 
             <Card className="space-y-4 border-slate-700 bg-slate-900 p-5">
-              <h2 className="text-xl font-bold">Dashboard</h2>
+              <h2 className="text-xl font-bold">Race Dashboard</h2>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-md bg-slate-800 p-3">
                   <p className="text-slate-300">Speedometer</p>
                   <p className="mt-1 flex items-center gap-2 text-2xl font-black text-cyan-300">
                     <Gauge className="h-5 w-5" />
-                    {Math.round(car.speed)} km/h
+                    {Math.round(player.speed)} km/h
                   </p>
                 </div>
                 <div className="rounded-md bg-slate-800 p-3">
-                  <p className="text-slate-300">Top Speed</p>
-                  <p className="mt-1 text-2xl font-black text-emerald-300">{topSpeed} km/h</p>
+                  <p className="text-slate-300">Integrity</p>
+                  <p className="mt-1 flex items-center gap-2 text-2xl font-black text-emerald-300">
+                    <Shield className="h-5 w-5" />
+                    {Math.round(player.integrity)}%
+                  </p>
                 </div>
                 <div className="rounded-md bg-slate-800 p-3">
                   <p className="text-slate-300">Timer</p>
@@ -389,17 +468,17 @@ const Game = () => {
 
               <div>
                 <div className="mb-1 flex justify-between text-xs">
-                  <span>Nitro</span>
-                  <span>{Math.round(boost)}%</span>
+                  <span className="flex items-center gap-1"><Zap className="h-3 w-3" /> Nitro</span>
+                  <span>{Math.round(player.nitro)}%</span>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-slate-700">
-                  <div className="h-full bg-gradient-to-r from-yellow-300 to-orange-500" style={{ width: `${boost}%` }} />
+                  <div className="h-full bg-gradient-to-r from-yellow-300 to-orange-500" style={{ width: `${player.nitro}%` }} />
                 </div>
               </div>
 
               <div>
                 <div className="mb-1 flex justify-between text-xs">
-                  <span>Road Progress</span>
+                  <span>Finish Progress</span>
                   <span>{progress.toFixed(1)}%</span>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-slate-700">
