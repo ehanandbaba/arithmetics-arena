@@ -15,10 +15,10 @@ const Home = () => {
   const [progress, setProgress] = useState(getProgress());
   const [dailyChallenge, setDailyChallenge] = useState(getDailyChallenge());
   
-  const [difficulty, setDifficulty] = useState<DifficultyPreset>('beginner');
-  const [gameMode, setGameMode] = useState<GameMode>('multiplication');
-  const [timerMode, setTimerMode] = useState<'per-question' | 'total'>('per-question');
-  const [timeLimit, setTimeLimit] = useState(30);
+  const [difficulty, setDifficulty] = useState<DifficultyPreset>('custom');
+  const [gameMode, setGameMode] = useState<GameMode>('mixed');
+  const [timerMode, setTimerMode] = useState<'per-question' | 'total'>('total');
+  const [timeLimit, setTimeLimit] = useState(60);
   const [totalQuestions, setTotalQuestions] = useState(20);
   const [selectedTables, setSelectedTables] = useState<number[]>([2, 3, 4, 5]);
   const [multiplierMin, setMultiplierMin] = useState(1);
@@ -70,6 +70,16 @@ const Home = () => {
     navigate('/game', { state: { settings } });
   };
 
+
+  const startSixtySecondChallenge = () => {
+    startGame({
+      mode: 'mixed',
+      timerMode: 'total',
+      timeLimit: 60,
+      difficulty: 'custom'
+    });
+  };
+
   const startDailyChallenge = () => {
     navigate('/game', { 
       state: { 
@@ -88,7 +98,11 @@ const Home = () => {
           <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent leading-tight pb-2">
             Times Tables Challenge
           </h1>
-          <p className="text-xl text-muted-foreground">Master multiplication and division!</p>
+          <p className="text-xl text-muted-foreground">Answer as many multiplication and division questions as you can in 60 seconds.</p>
+          <Button onClick={startSixtySecondChallenge} size="lg" className="text-lg h-14 px-10">
+            <Play className="w-6 h-6 mr-2" />
+            Start 60-Second Challenge
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

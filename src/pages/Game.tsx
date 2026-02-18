@@ -17,6 +17,7 @@ const Game = () => {
   const isDailyChallenge = location.state?.isDailyChallenge;
   const inputRef = useRef<HTMLInputElement>(null);
   const questionStartTimeRef = useRef<number>(Date.now());
+  const totalTimerDeadlineRef = useRef<number | null>(null);
 
   // Redirect if no settings
   useEffect(() => {
@@ -62,6 +63,7 @@ const Game = () => {
   const totalQuestions = effectiveSettings.timerMode === 'total' 
     ? effectiveSettings.totalQuestions || 20 
     : (effectiveSettings.totalQuestions || Infinity);
+  const canPause = effectiveSettings.timerMode !== 'total';
 
 
   useEffect(() => {
@@ -70,49 +72,65 @@ const Game = () => {
       setTimeLeft(pausedGame.timeLeft);
       setTotalTimeLeft(pausedGame.totalTimeLeft);
       setQuestionsCompleted(pausedGame.questionsCompleted);
+      if (effectiveSettings.timerMode === 'total') {
+        totalTimerDeadlineRef.current = Date.now() + pausedGame.totalTimeLeft * 1000;
+      }
       clearPausedGame();
     } else {
       generateNewQuestion();
       if (effectiveSettings.timerMode === 'total') {
         setTotalTimeLeft(effectiveSettings.timeLimit);
+        totalTimerDeadlineRef.current = Date.now() + effectiveSettings.timeLimit * 1000;
       }
     }
   }, []);
 
   useEffect(() => {
-    if (isPaused || feedback || !currentQuestion) return;
+    if (!currentQuestion) return;
+
+    if (effectiveSettings.timerMode === 'total') {
+      const timer = setInterval(() => {
+        if (!totalTimerDeadlineRef.current) return;
+
+        const remainingSeconds = Math.max(
+          0,
+          Math.ceil((totalTimerDeadlineRef.current - Date.now()) / 1000)
+        );
+
+        setTotalTimeLeft(remainingSeconds);
+
+        if (remainingSeconds <= 0) {
+          clearInterval(timer);
+          endGame();
+        }
+      }, 250);
+
+      return () => clearInterval(timer);
+    }
+
+    if (isPaused || feedback) return;
 
     const timer = setInterval(() => {
-      if (effectiveSettings.timerMode === 'per-question') {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            // Handle timeout immediately
-            if (!currentQuestion) return 0;
-            
-            setFeedback('incorrect');
-            setStats(prevStats => ({
-              ...prevStats,
-              incorrect: prevStats.incorrect + 1,
-              totalQuestions: prevStats.totalQuestions + 1,
-              questionsAnswered: [...prevStats.questionsAnswered, currentQuestion],
-              currentStreak: 0,
-              answerTimes: [...prevStats.answerTimes, effectiveSettings.timeLimit]
-            }));
-            setQuestionsCompleted(prev => prev + 1);
-            
-            return 0;
-          }
-          return prev - 1;
-        });
-      } else {
-        setTotalTimeLeft(prev => {
-          if (prev <= 1) {
-            endGame();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          // Handle timeout immediately
+          if (!currentQuestion) return 0;
+
+          setFeedback('incorrect');
+          setStats(prevStats => ({
+            ...prevStats,
+            incorrect: prevStats.incorrect + 1,
+            totalQuestions: prevStats.totalQuestions + 1,
+            questionsAnswered: [...prevStats.questionsAnswered, currentQuestion],
+            currentStreak: 0,
+            answerTimes: [...prevStats.answerTimes, effectiveSettings.timeLimit]
+          }));
+          setQuestionsCompleted(prevCount => prevCount + 1);
+
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
 
     return () => clearInterval(timer);
@@ -201,6 +219,7 @@ const Game = () => {
   };
 
   const handlePause = () => {
+    if (!canPause) return;
     setIsPaused(true);
     savePausedGame({
       settings: effectiveSettings,
@@ -288,7 +307,7 @@ const Game = () => {
             <div className="flex justify-between items-center text-sm">
               <span className="text-muted-foreground">
                 {effectiveSettings.timerMode === 'total' 
-                  ? `Questions: ${questionsCompleted} / ${totalQuestions}`
+                  ? `Questions answered: ${questionsCompleted}`
                   : `Question ${questionsCompleted + 1}`
                 }
               </span>
@@ -366,15 +385,17 @@ const Game = () => {
                     <Check className="w-6 h-6 mr-2" />
                     Submit
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="lg"
-                    onClick={handlePause}
-                    className="h-16 px-8"
-                  >
-                    <Pause className="w-6 h-6" />
-                  </Button>
+                  {canPause && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      onClick={handlePause}
+                      className="h-16 px-8"
+                    >
+                      <Pause className="w-6 h-6" />
+                    </Button>
+                  )}
                 </div>
               </form>
             </div>
