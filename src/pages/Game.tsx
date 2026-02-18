@@ -98,6 +98,25 @@ const Game = () => {
     setObstacles([]);
   }, []);
 
+  const startRace = useCallback(() => {
+    if (finished) {
+      setFinished(false);
+      setTimeElapsed(0);
+      setBoost(100);
+      setScore(0);
+      setCar({ x: laneToX(1), speed: 0, lane: 1, distance: 0, isBoosting: false });
+      setObstacles([]);
+      obstacleIdRef.current = 0;
+      spawnTicksRef.current = 0;
+      boostRef.current = 100;
+      speedRef.current = 0;
+    }
+
+    setStarted(true);
+    setMessage('Race started! Dodge traffic and push your top speed.');
+    raceAreaRef.current?.focus();
+  }, [finished]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       pressedRef.current[event.code] = true;
@@ -106,9 +125,8 @@ const Game = () => {
         event.preventDefault();
       }
 
-      if (!started && !finished && isStartKey(event)) {
-        setStarted(true);
-        setMessage('Race started! Dodge traffic and push your top speed.');
+      if (!started && isStartKey(event)) {
+        startRace();
       }
     };
 
@@ -122,7 +140,21 @@ const Game = () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [finished, started]);
+  }, [startRace, started]);
+
+  useEffect(() => {
+    const clearPressedKeys = () => {
+      pressedRef.current = {};
+    };
+
+    window.addEventListener('blur', clearPressedKeys);
+    document.addEventListener('visibilitychange', clearPressedKeys);
+
+    return () => {
+      window.removeEventListener('blur', clearPressedKeys);
+      document.removeEventListener('visibilitychange', clearPressedKeys);
+    };
+  }, []);
 
   useEffect(() => {
     if (!started || finished) {
@@ -279,11 +311,7 @@ const Game = () => {
               {!started && !finished && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setStarted(true);
-                    setMessage('Race started! Dodge traffic and push your top speed.');
-                    raceAreaRef.current?.focus();
-                  }}
+                  onClick={startRace}
                   className="absolute inset-0 flex items-center justify-center bg-slate-950/35 text-center"
                 >
                   <div className="rounded-xl border border-cyan-300/60 bg-slate-900/85 p-5">
@@ -322,11 +350,7 @@ const Game = () => {
               </div>
               <Button
                 className="w-full"
-                onClick={() => {
-                  setStarted(true);
-                  setMessage('Race started! Dodge traffic and push your top speed.');
-                  raceAreaRef.current?.focus();
-                }}
+                onClick={startRace}
                 disabled={started}
               >
                 {finished ? 'Start New Race' : 'Start Race (Enter)'}
