@@ -42,6 +42,12 @@ const drivers: Driver[] = [
 
 const laneToX = (lane: number) => 20 + lane * ((ROAD_WIDTH - 40) / LANES);
 
+const isStartKey = (event: KeyboardEvent) =>
+  event.code === 'Enter' || event.code === 'NumpadEnter' || event.code === 'Space' || event.key === ' ';
+
+const isControlKey = (event: KeyboardEvent) =>
+  ['ArrowLeft', 'ArrowRight', 'Space', 'Enter', 'NumpadEnter', 'KeyA', 'KeyD', 'KeyR'].includes(event.code);
+
 const Game = () => {
   const navigate = useNavigate();
   const [selectedDriver, setSelectedDriver] = useState<Driver>(drivers[0]);
@@ -60,6 +66,7 @@ const Game = () => {
   const spawnTicksRef = useRef(0);
   const boostRef = useRef(100);
   const speedRef = useRef(0);
+  const raceAreaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     boostRef.current = boost;
@@ -68,6 +75,10 @@ const Game = () => {
   useEffect(() => {
     speedRef.current = car.speed;
   }, [car.speed]);
+
+  useEffect(() => {
+    raceAreaRef.current?.focus();
+  }, []);
 
   const topSpeed = useMemo(() => Math.round(selectedDriver.maxSpeed + (car.isBoosting ? 35 : 0)), [selectedDriver.maxSpeed, car.isBoosting]);
   const progress = Math.min((car.distance / FINISH_DISTANCE) * 100, 100);
@@ -90,11 +101,14 @@ const Game = () => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       pressedRef.current[event.code] = true;
-      if (!started && !finished && event.code === 'Enter') {
-        setStarted(true);
+
+      if (isControlKey(event)) {
+        event.preventDefault();
       }
-      if (!started && !finished && event.code === 'Space') {
+
+      if (!started && !finished && isStartKey(event)) {
         setStarted(true);
+        setMessage('Race started! Dodge traffic and push your top speed.');
       }
     };
 
@@ -213,7 +227,12 @@ const Game = () => {
   }, [resetRace]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white px-4 py-6">
+    <div
+      ref={raceAreaRef}
+      tabIndex={0}
+      onClick={() => raceAreaRef.current?.focus()}
+      className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white px-4 py-6 outline-none"
+    >
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="outline" onClick={() => navigate('/')}>
@@ -258,12 +277,20 @@ const Game = () => {
               </div>
 
               {!started && !finished && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-950/35 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStarted(true);
+                    setMessage('Race started! Dodge traffic and push your top speed.');
+                    raceAreaRef.current?.focus();
+                  }}
+                  className="absolute inset-0 flex items-center justify-center bg-slate-950/35 text-center"
+                >
                   <div className="rounded-xl border border-cyan-300/60 bg-slate-900/85 p-5">
-                    <p className="text-lg font-bold text-cyan-200">Press Enter to Start</p>
-                    <p className="mt-1 text-sm text-slate-200">Use ←/→ or A/D to steer • Hold Space for Nitro</p>
+                    <p className="text-lg font-bold text-cyan-200">Press Enter or Click to Start</p>
+                    <p className="mt-1 text-sm text-slate-200">Use ←/→ or A/D to steer • Hold Space for Nitro • R to reset</p>
                   </div>
-                </div>
+                </button>
               )}
             </div>
           </Card>
@@ -293,7 +320,15 @@ const Game = () => {
                   </button>
                 ))}
               </div>
-              <Button className="w-full" onClick={() => setStarted(true)} disabled={started}>
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setStarted(true);
+                  setMessage('Race started! Dodge traffic and push your top speed.');
+                  raceAreaRef.current?.focus();
+                }}
+                disabled={started}
+              >
                 {finished ? 'Start New Race' : 'Start Race (Enter)'}
               </Button>
             </Card>
