@@ -26,11 +26,6 @@ const Game = () => {
     }
   }, [settings, navigate]);
 
-  // Early return if no settings to prevent crashes
-  if (!settings) {
-    return null;
-  }
-
   const pausedGame = getPausedGame();
   
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
@@ -53,20 +48,26 @@ const Game = () => {
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [questionsCompleted, setQuestionsCompleted] = useState(pausedGame?.questionsCompleted || 0);
 
-  const effectiveSettings = isDailyChallenge ? {
-    ...settings,
-    totalQuestions: 50,
-    timeLimit: 3,
-    timerMode: 'per-question' as const
-  } : settings;
+  const effectiveSettings: GameSettings | null = settings
+    ? (isDailyChallenge
+      ? {
+          ...settings,
+          totalQuestions: 50,
+          timeLimit: 3,
+          timerMode: 'per-question' as const
+        }
+      : settings)
+    : null;
 
-  const totalQuestions = effectiveSettings.timerMode === 'total' 
+  const totalQuestions = effectiveSettings?.timerMode === 'total' 
     ? effectiveSettings.totalQuestions || 20 
-    : (effectiveSettings.totalQuestions || Infinity);
-  const canPause = effectiveSettings.timerMode !== 'total';
+    : (effectiveSettings?.totalQuestions || Infinity);
+  const canPause = effectiveSettings?.timerMode !== 'total';
 
 
   useEffect(() => {
+    if (!effectiveSettings) return;
+
     if (pausedGame) {
       setCurrentQuestion(pausedGame.currentQuestion);
       setTimeLeft(pausedGame.timeLeft);
@@ -86,7 +87,7 @@ const Game = () => {
   }, []);
 
   useEffect(() => {
-    if (!currentQuestion) return;
+    if (!effectiveSettings || !currentQuestion) return;
 
     if (effectiveSettings.timerMode === 'total') {
       const timer = setInterval(() => {
@@ -134,7 +135,7 @@ const Game = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPaused, feedback, currentQuestion, effectiveSettings.timerMode, effectiveSettings.timeLimit]);
+  }, [isPaused, feedback, currentQuestion, effectiveSettings?.timerMode, effectiveSettings?.timeLimit]);
 
   useEffect(() => {
     if (!isPaused) {
@@ -144,6 +145,8 @@ const Game = () => {
 
   // Auto-advance after showing feedback
   useEffect(() => {
+    if (!effectiveSettings) return;
+
     if (feedback) {
       const timer = setTimeout(() => {
         // Check current questionsCompleted value to decide next action
@@ -158,9 +161,11 @@ const Game = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [feedback, questionsCompleted, totalQuestions, effectiveSettings.timerMode]);
+  }, [feedback, questionsCompleted, totalQuestions, effectiveSettings?.timerMode]);
 
   const generateNewQuestion = () => {
+    if (!effectiveSettings) return;
+
     const question = generateQuestion(effectiveSettings);
     setCurrentQuestion(question);
     setUserAnswer('');
@@ -219,7 +224,7 @@ const Game = () => {
   };
 
   const handlePause = () => {
-    if (!canPause) return;
+    if (!effectiveSettings || !canPause) return;
     setIsPaused(true);
     savePausedGame({
       settings: effectiveSettings,
@@ -238,6 +243,8 @@ const Game = () => {
   };
 
   const endGame = () => {
+    if (!effectiveSettings) return;
+
     clearPausedGame();
     navigate('/results', { 
       state: { 
@@ -248,7 +255,7 @@ const Game = () => {
     });
   };
 
-  if (!currentQuestion) return null;
+  if (!effectiveSettings || !currentQuestion) return null;
 
   const operatorSymbol = currentQuestion.operation === 'multiplication' ? '×' : '÷';
   const progressPercentage = stats.totalQuestions > 0 
